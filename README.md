@@ -1,16 +1,40 @@
-# medicine_reminder_system
+# 📱 MediMate – Medicine Reminder & Health Tracker  
 
-A new Flutter project.
+MediMate is a **Flutter-based mobile application** that helps users manage their daily medicines and monitor health vitals. The app ensures timely reminders, provides a calendar schedule, and maintains a history log for better health management.  
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## ✨ Features  
 
-A few resources to get you started if this is your first Flutter project:
+- **Add/Edit/Delete Medicines** – Manage medicines with dosage, frequency, and timings.  
+- **Daily Reminders** – Local notifications to remind users of scheduled medicines.  
+- **Calendar View** – View daily/weekly medicine schedule.  
+- **Medicine History Log** – Track taken and missed doses.  
+- **Health Tracker** – Log health vitals like BP, sugar, etc., with graphs.  
+- **User Profile & Emergency Contact** – Store personal details and quick SOS contact.  
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+---
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 🛠️ Tech Stack  
+
+- **Framework:** Flutter  
+- **Database:** SQLite (with optional Firebase integration)  
+- **Notifications:** flutter_local_notifications  
+- **Charts & Graphs:** fl_chart / syncfusion_flutter_charts  
+- **Calendar:** table_calendar  
+- **State Management:** Provider  
+
+---
+
+## 📦 Dependencies  
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_local_notifications: ^x.x.x
+  sqflite: ^x.x.x
+  path_provider: ^x.x.x
+  table_calendar: ^x.x.x
+  fl_chart: ^x.x.x
+  provider: ^x.x.x
