@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:medicine_reminder_system/screens/home_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:medicine_reminder_system/screens/onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -14,17 +14,17 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Timer(const Duration(seconds: 3), () {
+    Timer(const Duration(seconds: 4), () {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(builder: (context) => const OnboardingScreen()),
       );
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: Color(0xFFFFFFFF),
       body: Center(
         child: Column(
