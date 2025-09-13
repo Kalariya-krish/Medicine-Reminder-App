@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../models/onboarding_item.dart';
 import '../widgets/onboarding_page.dart';
-import 'package:medicine_reminder_system/screens/login_screen.dart';
-import 'package:medicine_reminder_system/screens/register_screen.dart';
+import '../widgets/custom_button.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -80,48 +78,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
               const SizedBox(height: 40),
 
-              // Buttons
-              buildButton(
+              CustomButton(
                 text: "Create an Account",
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                ),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/register');
+                },
               ),
               const SizedBox(height: 16),
-              buildButton(
+              CustomButton(
                 text: "Already Have an Account?",
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                ),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/login');
+                },
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Reusable button
-  Widget buildButton({required String text, required VoidCallback onPressed}) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFEF6A6A),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        onPressed: onPressed,
-        child: Text(
-          text,
-          style: GoogleFonts.montserrat(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
           ),
         ),
       ),

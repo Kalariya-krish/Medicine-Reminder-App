@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:medicine_reminder_system/screens/splash_screen.dart';
+import 'package:medicine_reminder_system/screens/login_screen.dart';
+import 'package:medicine_reminder_system/screens/register_screen.dart';
 
 void main() {
   runApp(const MediMateApp());
@@ -17,7 +19,11 @@ class MediMateApp extends StatelessWidget {
         primarySwatch: Colors.blue,
         scaffoldBackgroundColor: const Color(0xFFFFFFFF),
       ),
-      home: const SplashScreen(),
+      home: const SplashScreen(), // starting screen
+      routes: {
+        '/register': (context) => const RegisterScreen(),
+        '/login': (context) => const LoginScreen(),
+      },
     );
   }
 }
