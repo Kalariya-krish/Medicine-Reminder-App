@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:medicine_reminder_system/widgets/custom_button.dart';
+import 'package:toastification/toastification.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -123,10 +124,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   text: "Sign in",
                   onPressed: () {
                     if (_formKey.currentState!.validate()) {
-                      // ✅ Validation passed
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Logging in...")),
-                      );
+                      toastification.show(
+                          title: Text('Logging in...'),
+                          icon: Icon(Icons.check),
+                          alignment: Alignment.topCenter,
+                          style: ToastificationStyle.fillColored,
+                          type: ToastificationType.success,
+                          autoCloseDuration: Duration(milliseconds: 1500));
+                      Future.delayed(Duration(seconds: 2), () {
+                        if (!context.mounted) return;
+                        Navigator.pushNamed(context, '/home');
+                      });
+
+                      // Navigator.of(context)
+                      // .pushNamedAndRemoveUntil('/home', (route) => false);
                     }
                   },
                 ),
@@ -136,7 +147,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 // Forget Password
                 Center(
                   child: GestureDetector(
-                    onTap: () {},
+                    onTap: () {
+                      Navigator.pushNamed(context, '/forgetpassword');
+                    },
                     child: Text(
                       "Forget Password",
                       style: GoogleFonts.montserrat(
