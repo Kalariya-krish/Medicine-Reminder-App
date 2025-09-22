@@ -1,11 +1,47 @@
+// In a file named: lib/screens/profile_screen.dart
+
 import 'package:flutter/material.dart';
+import 'package:medicine_reminder_system/screens/change_password_screen.dart';
+import 'package:medicine_reminder_system/screens/edit_profile_screen.dart';
+import 'package:medicine_reminder_system/screens/login_screen.dart'; // We will create this for logout
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
+  // --- Logout Functionality ---
+  void _logout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Confirm Logout'),
+          content: const Text('Are you sure you want to log out?'),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+              },
+            ),
+            TextButton(
+              child: const Text('Logout'),
+              onPressed: () {
+                // Navigate to LoginScreen and remove all previous routes
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (Route<dynamic> route) =>
+                      false, // This predicate removes all routes
+                );
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Define the accent color for icons
     const Color accentColor = Color(0xFFEF6A6A);
 
     return Scaffold(
@@ -16,6 +52,7 @@ class ProfileScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Title
               const Text(
                 "Profile",
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
@@ -27,39 +64,24 @@ class ProfileScreen extends StatelessWidget {
                   children: [
                     const CircleAvatar(
                       radius: 50,
-                      // Make sure you have an image in your assets folder
-                      // and update pubspec.yaml accordingly.
                       backgroundImage: AssetImage('assets/profile_pic.png'),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Kris Kalariya',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    const Text('Kris Kalariya',
+                        style: TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text(
-                      '30 Male',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[600],
-                      ),
-                    ),
+                    Text('30 Male',
+                        style:
+                            TextStyle(fontSize: 16, color: Colors.grey[600])),
                   ],
                 ),
               ),
               const SizedBox(height: 40),
 
               // --- Mobile Number Section ---
-              const Text(
-                'Mobile Number',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              const Text('Mobile Number',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
               const Card(
                 elevation: 0,
@@ -74,13 +96,8 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 30),
 
               // --- Settings Section ---
-              const Text(
-                'Settings',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              const Text('Settings',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
               Card(
                 elevation: 0,
@@ -93,7 +110,12 @@ class ProfileScreen extends StatelessWidget {
                       icon: Icons.edit,
                       title: 'Edit Profile',
                       onTap: () {
-                        // Handle Edit Profile tap
+                        // ** NAVIGATE TO EDIT PROFILE **
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const EditProfileScreen()));
                       },
                       color: accentColor,
                     ),
@@ -101,7 +123,12 @@ class ProfileScreen extends StatelessWidget {
                       icon: Icons.password,
                       title: 'Change Password',
                       onTap: () {
-                        // Handle Change Password tap
+                        // ** NAVIGATE TO CHANGE PASSWORD **
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const ChangePasswordScreen()));
                       },
                       color: accentColor,
                     ),
@@ -109,10 +136,11 @@ class ProfileScreen extends StatelessWidget {
                       icon: Icons.logout,
                       title: 'Logout',
                       onTap: () {
-                        // Handle Logout tap
+                        // ** CALL LOGOUT FUNCTION **
+                        _logout(context);
                       },
                       color: accentColor,
-                      hideDivider: true, // No divider for the last item
+                      hideDivider: true,
                     ),
                   ],
                 ),
@@ -124,7 +152,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // Helper widget to build each setting item to avoid code repetition
+  // Helper widget for settings items
   Widget _buildSettingsTile({
     required IconData icon,
     required String title,
