@@ -37,6 +37,7 @@ dependencies:
   google_fonts: ^6.3.0
   toastification: ^3.0.3
   table_calendar: ^3.2.0
+  fl_chart: ^0.71.0
 
 dev_dependencies:
   flutter_test:
