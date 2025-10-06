@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:medicine_reminder_system/screens/add_medicine_screen.dart';
 // Import your new model file
 import 'package:medicine_reminder_system/models/medication_model.dart';
+import 'package:medicine_reminder_system/screens/reminder_screen.dart';
 
 class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key});
@@ -240,7 +241,15 @@ class _MedicationCardState extends State<MedicationCard> {
                     label: 'Snooze',
                     icon: Icons.snooze,
                     color: isTaken ? Colors.blue.withOpacity(0.5) : Colors.blue,
-                    onPressed: isTaken ? null : () {},
+                    onPressed: isTaken
+                        ? null
+                        : () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => ReminderScreen()),
+                            );
+                          },
                   ),
                   _buildActionButton(
                     label: 'Skip',
