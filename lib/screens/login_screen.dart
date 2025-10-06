@@ -23,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Form(
+          child: SingleChildScrollView(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,7 +161,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                const Spacer(),
+                const SizedBox(height: 40),
 
                 Center(
                   child: GestureDetector(
@@ -187,7 +187,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
               ],
             ),
           ),
