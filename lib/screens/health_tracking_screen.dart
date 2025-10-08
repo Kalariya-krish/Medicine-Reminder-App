@@ -101,13 +101,13 @@ class HealthTrackerScreen extends StatelessWidget {
                       sections: [
                         PieChartSectionData(
                           color: Colors.red,
-                          value: 40,
+                          value: 50,
                           title: '',
                           radius: 40,
                         ),
                         PieChartSectionData(
                           color: Colors.blue,
-                          value: 30,
+                          value: 20,
                           title: '',
                           radius: 40,
                         ),
