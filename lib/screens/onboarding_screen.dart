@@ -37,7 +37,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
-              // PageView
               Expanded(
                 child: PageView.builder(
                   controller: _controller,
@@ -47,7 +46,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
               ),
 
-              // Dots indicator (clickable)
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(

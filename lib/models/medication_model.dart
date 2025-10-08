@@ -1,9 +1,5 @@
-// In a file named: lib/models/medication_model.dart
-
 import 'package:flutter/material.dart';
 
-// This class defines the structure for a single medication item.
-// Keeping it separate allows you to reuse it across different screens.
 class Medication {
   final String name;
   final String dosage;

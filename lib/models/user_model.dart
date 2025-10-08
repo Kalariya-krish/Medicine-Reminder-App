@@ -13,7 +13,6 @@ class UserModel {
     required this.age,
   });
 
-  // Convert User -> Map (for DB)
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -24,7 +23,6 @@ class UserModel {
     };
   }
 
-  // Convert Map -> User
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
       id: map['id'],
