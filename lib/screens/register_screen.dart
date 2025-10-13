@@ -1,6 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:medicine_reminder_system/widgets/custom_button.dart';
+import 'package:medicine_reminder_system/services/firebase_auth_service.dart';
+import 'package:toastification/toastification.dart';
+import 'package:intl/intl.dart'; // For formatting date
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -23,6 +27,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
+  // Function to pick date
+  Future<void> _selectDate(BuildContext context) async {
+    DateTime initialDate =
+        DateTime.now().subtract(const Duration(days: 365 * 18));
+    DateTime firstDate = DateTime(1900);
+    DateTime lastDate = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
+    );
+    if (picked != null) {
+      setState(() {
+        _dobController.text = DateFormat('dd-MM-yyyy').format(picked);
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -35,15 +58,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Back Button
                   IconButton(
                     icon: const Icon(Icons.arrow_back),
                     onPressed: () => Navigator.pop(context),
                   ),
-
                   const SizedBox(height: 20),
-
-                  // Title
                   Center(
                     child: Text(
                       "Sign up",
@@ -53,7 +72,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 30),
 
                   // Username
@@ -61,10 +79,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   buildTextField(
                     controller: _usernameController,
                     hint: "Enter your username",
-                    validator: (value) =>
-                        value!.isEmpty ? "Please enter your username" : null,
+                    validator: (value) {
+                      if (value!.isEmpty) return "Please enter username";
+                      if (value.length < 3) return "Minimum 3 characters";
+                      return null;
+                    },
                   ),
-
                   const SizedBox(height: 16),
 
                   // Email
@@ -74,21 +94,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     hint: "Enter your email",
                     keyboardType: TextInputType.emailAddress,
                     validator: (value) {
-                      if (value!.isEmpty) return "Please enter your email";
+                      if (value!.isEmpty) return "Please enter email";
                       if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-                        return "Please enter a valid email";
+                        return "Enter a valid email";
                       }
                       return null;
                     },
                   ),
-
                   const SizedBox(height: 16),
 
                   // Password
                   buildLabel("Password"),
                   buildTextField(
                     controller: _passwordController,
-                    hint: "Enter your password",
+                    hint: "Enter password",
                     obscureText: _obscurePassword,
                     suffixIcon: IconButton(
                       icon: Icon(_obscurePassword
@@ -98,14 +117,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           setState(() => _obscurePassword = !_obscurePassword),
                     ),
                     validator: (value) {
-                      if (value!.isEmpty) return "Please enter your password";
-                      if (value.length < 6) {
-                        return "Password must be at least 6 characters";
+                      if (value!.isEmpty) return "Please enter password";
+                      if (value.length < 6) return "Minimum 6 characters";
+                      if (!RegExp(
+                              r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&]).{6,}$')
+                          .hasMatch(value)) {
+                        return "Password must contain letter, number & special char";
                       }
                       return null;
                     },
                   ),
-
                   const SizedBox(height: 16),
 
                   // Confirm Password
@@ -122,70 +143,112 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           _obscureConfirmPassword = !_obscureConfirmPassword),
                     ),
                     validator: (value) {
-                      if (value!.isEmpty) {
-                        return "Please confirm your password";
-                      }
-                      if (value != _passwordController.text) {
+                      if (value!.isEmpty) return "Confirm your password";
+                      if (value != _passwordController.text)
                         return "Passwords do not match";
-                      }
                       return null;
                     },
                   ),
-
                   const SizedBox(height: 16),
 
                   // DOB
                   buildLabel("Date of Birth"),
-                  buildTextField(
-                    controller: _dobController,
-                    hint: "Enter your DOB",
-                    keyboardType: TextInputType.datetime,
-                    validator: (value) =>
-                        value!.isEmpty ? "Please enter your DOB" : null,
+                  GestureDetector(
+                    onTap: () => _selectDate(context),
+                    child: AbsorbPointer(
+                      child: buildTextField(
+                        controller: _dobController,
+                        hint: "Select your DOB",
+                        validator: (value) {
+                          if (value!.isEmpty) return "Please select DOB";
+                          return null;
+                        },
+                      ),
+                    ),
                   ),
-
                   const SizedBox(height: 16),
 
                   // Mobile Number
                   buildLabel("Mobile Number"),
                   buildTextField(
                     controller: _mobileController,
-                    hint: "Enter your mobile no",
+                    hint: "Enter mobile no",
                     keyboardType: TextInputType.phone,
                     validator: (value) {
-                      if (value!.isEmpty)
-                        return "Please enter your mobile number";
+                      if (value!.isEmpty) return "Please enter mobile number";
                       if (!RegExp(r'^[0-9]{10}$').hasMatch(value)) {
-                        return "Enter a valid 10-digit number";
+                        return "Enter valid 10-digit number";
                       }
                       return null;
                     },
                   ),
-
                   const SizedBox(height: 30),
 
                   // Sign up button
                   CustomButton(
                     text: "Sign up",
-                    onPressed: () {
+                    onPressed: () async {
                       if (_formKey.currentState!.validate()) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Registering...")),
-                        );
-                        // TODO: Add your signup logic
+                        try {
+                          await FirebaseAuthService.registerUser(
+                            username: _usernameController.text.trim(),
+                            email: _emailController.text.trim(),
+                            password: _passwordController.text.trim(),
+                            dob: _dobController.text.trim(),
+                            mobile: _mobileController.text.trim(),
+                          );
+
+                          toastification.show(
+                              title: const Text('Registration successful'),
+                              icon: const Icon(Icons.check),
+                              alignment: Alignment.topCenter,
+                              style: ToastificationStyle.fillColored,
+                              type: ToastificationType.success,
+                              autoCloseDuration:
+                                  const Duration(milliseconds: 1500));
+
+                          Navigator.pushReplacementNamed(context, '/home');
+                        } on FirebaseAuthException catch (e) {
+                          if (e.code == 'email-already-in-use') {
+                            toastification.show(
+                                title: const Text('Email already registered'),
+                                icon: const Icon(Icons.check),
+                                alignment: Alignment.topCenter,
+                                style: ToastificationStyle.fillColored,
+                                type: ToastificationType.error,
+                                autoCloseDuration:
+                                    const Duration(milliseconds: 1500));
+                          } else {
+                            toastification.show(
+                                title: const Text('Registration failed'),
+                                icon: const Icon(Icons.check),
+                                alignment: Alignment.topCenter,
+                                style: ToastificationStyle.fillColored,
+                                type: ToastificationType.error,
+                                autoCloseDuration:
+                                    const Duration(milliseconds: 1500));
+                          }
+                        } catch (e) {
+                          toastification.show(
+                              title: const Text('Something went wrong'),
+                              icon: const Icon(Icons.check),
+                              alignment: Alignment.topCenter,
+                              style: ToastificationStyle.fillColored,
+                              type: ToastificationType.success,
+                              autoCloseDuration:
+                                  const Duration(milliseconds: 1500));
+                        }
                       }
                     },
                   ),
-
                   const SizedBox(height: 20),
 
-                  // Already member? Login
                   Center(
                     child: GestureDetector(
                       onTap: () => Navigator.pushNamed(context, '/login'),
                       child: RichText(
                         text: TextSpan(
-                          text: "Already a member ? ",
+                          text: "Already a member? ",
                           style: GoogleFonts.montserrat(
                             color: Colors.black,
                             fontSize: 14,

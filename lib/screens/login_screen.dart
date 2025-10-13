@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:medicine_reminder_system/widgets/custom_button.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:toastification/toastification.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,12 +12,85 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // GlobalKey is correctly defined for FormState
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
+  bool _isLoading = false; // For loading indicator
+
+  // Firebase Auth instance
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Function to handle login
+  Future<void> _loginUser() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Sign in with email & password
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      toastification.show(
+          title: const Text('Logged in successfully!'),
+          icon: const Icon(Icons.check),
+          alignment: Alignment.topCenter,
+          style: ToastificationStyle.fillColored,
+          type: ToastificationType.success,
+          autoCloseDuration: const Duration(milliseconds: 1500));
+
+      // Navigate to home screen
+      Future.delayed(const Duration(seconds: 1), () {
+        if (!context.mounted) return;
+        Navigator.pushReplacementNamed(context, '/home');
+      });
+    } on FirebaseAuthException catch (e) {
+      // Handle Firebase login errors
+      String errorMessage;
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage = "Invalid email format!";
+          break;
+        case 'user-not-found':
+          errorMessage = "No user found with this email!";
+          break;
+        case 'wrong-password':
+          errorMessage = "Incorrect password!";
+          break;
+        case 'user-disabled':
+          errorMessage = "User account is disabled!";
+          break;
+        default:
+          errorMessage = "Login failed. Try again!";
+      }
+
+      toastification.show(
+          title: const Text('Error'),
+          icon: const Icon(Icons.check),
+          alignment: Alignment.topCenter,
+          style: ToastificationStyle.fillColored,
+          type: ToastificationType.error,
+          autoCloseDuration: const Duration(milliseconds: 1500));
+    } catch (e) {
+      toastification.show(
+          title: const Text('Something went wrong!'),
+          icon: const Icon(Icons.check),
+          alignment: Alignment.topCenter,
+          style: ToastificationStyle.fillColored,
+          type: ToastificationType.error,
+          autoCloseDuration: const Duration(milliseconds: 1500));
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,21 +99,16 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: SingleChildScrollView(
-            // --- The SingleChildScrollView should NOT have the key ---
             child: Form(
-              // <--- WRAP THE COLUMN WITH A FORM WIDGET
-              key: _formKey, // <--- ASSIGN THE GLOBAL KEY TO THE FORM
+              key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Back button
                   IconButton(
                     icon: const Icon(Icons.arrow_back),
                     onPressed: () => Navigator.pop(context),
                   ),
-
                   const SizedBox(height: 20),
-
                   Center(
                     child: Text(
                       "Sign in",
@@ -49,122 +118,65 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 40),
 
-                  // --- Email Field ---
-                  Text(
-                    "Email",
-                    style: GoogleFonts.montserrat(
-                        fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 8),
-
-                  TextFormField(
+                  // Email Field
+                  buildLabel("Email"),
+                  buildTextField(
                     controller: _emailController,
+                    hint: "Enter your email",
                     keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      hintText: "Enter your email",
-                      hintStyle: GoogleFonts.montserrat(fontSize: 14),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
+                      if (value == null || value.isEmpty)
                         return "Please enter your email";
-                      }
-                      if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-                        return "Please enter a valid email";
-                      }
+                      if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value))
+                        return "Enter a valid email";
                       return null;
                     },
                   ),
-
                   const SizedBox(height: 20),
 
-                  // --- Password Field ---
-                  Text(
-                    "Password",
-                    style: GoogleFonts.montserrat(
-                        fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 8),
-
-                  TextFormField(
+                  // Password Field
+                  buildLabel("Password"),
+                  buildTextField(
                     controller: _passwordController,
+                    hint: "Enter your password",
                     obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      hintText: "Enter your password",
-                      hintStyle: GoogleFonts.montserrat(fontSize: 14),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                      ),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
+                        });
+                      },
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) {
+                      if (value == null || value.isEmpty)
                         return "Please enter your password";
-                      }
-                      if (value.length < 6) {
+                      if (value.length < 6)
                         return "Password must be at least 6 characters";
-                      }
                       return null;
                     },
                   ),
-
                   const SizedBox(height: 30),
 
-                  // --- Sign In Button ---
-                  CustomButton(
-                    text: "Sign in",
-                    onPressed: () {
-                      // 1. Check if the Form is valid
-                      if (_formKey.currentState!.validate()) {
-                        // 2. Show success toast (UX feedback)
-                        toastification.show(
-                            title: const Text('Logging in...'),
-                            icon: const Icon(Icons.check),
-                            alignment: Alignment.topCenter,
-                            style: ToastificationStyle.fillColored,
-                            type: ToastificationType.success,
-                            autoCloseDuration:
-                                const Duration(milliseconds: 1500));
-
-                        // 3. Navigate after the toast has a chance to be seen
-                        Future.delayed(const Duration(seconds: 1), () {
-                          if (!context.mounted) return;
-
-                          // Use pushReplacementNamed to prevent coming back to Login
-                          Navigator.pushReplacementNamed(context, '/home');
-
-                          // Note: I replaced your original pushNamed with pushReplacementNamed
-                          // as that is standard for login. If you meant to use the other,
-                          // simply change it back.
-                        });
-                      }
-                    },
-                  ),
+                  // Login Button
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : CustomButton(
+                          text: "Sign in",
+                          onPressed: _loginUser,
+                        ),
 
                   const SizedBox(height: 16),
 
                   // Forget Password
                   Center(
                     child: GestureDetector(
-                      onTap: () {
-                        Navigator.pushNamed(context, '/forgetpassword');
-                      },
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/forgetpassword'),
                       child: Text(
                         "Forget Password",
                         style: GoogleFonts.montserrat(
@@ -175,18 +187,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 40),
 
                   // Register Now
                   Center(
                     child: GestureDetector(
-                      onTap: () {
-                        Navigator.pushNamed(context, '/register');
-                      },
+                      onTap: () => Navigator.pushNamed(context, '/register'),
                       child: RichText(
                         text: TextSpan(
-                          text: "Not a member ? ",
+                          text: "Not a member? ",
                           style: GoogleFonts.montserrat(
                               color: Colors.black, fontSize: 14),
                           children: [
@@ -202,14 +211,44 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-
-                  const SizedBox(height: 10),
                 ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget buildLabel(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.montserrat(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+  }
+
+  Widget buildTextField({
+    required TextEditingController controller,
+    required String hint,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+    bool obscureText = false,
+    Widget? suffixIcon,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      obscureText: obscureText,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: GoogleFonts.montserrat(fontSize: 14),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        suffixIcon: suffixIcon,
+      ),
+      validator: validator,
     );
   }
 }
