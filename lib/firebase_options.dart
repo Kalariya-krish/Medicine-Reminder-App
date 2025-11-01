@@ -85,4 +85,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'medicine-reminder-system-32cd9.firebasestorage.app',
     measurementId: 'G-E5FPLLHBW2',
   );
+
 }

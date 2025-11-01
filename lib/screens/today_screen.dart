@@ -1,10 +1,12 @@
 // In a file named: lib/screens/today_screen.dart
 
 import 'package:flutter/material.dart';
-// Import the screen you want to navigate to
+import 'package:intl/intl.dart'; // NEW for date formatting
+import 'package:firebase_auth/firebase_auth.dart'; // NEW
+import 'package:cloud_firestore/cloud_firestore.dart'; // NEW
+
 import 'package:medicine_reminder_system/screens/add_medicine_screen.dart';
-// Import your new model file
-import 'package:medicine_reminder_system/models/medication_model.dart';
+import '../models/medicine.dart'; // Import the updated model
 import 'package:medicine_reminder_system/screens/reminder_screen.dart';
 
 class TodayScreen extends StatefulWidget {
@@ -15,27 +17,38 @@ class TodayScreen extends StatefulWidget {
 }
 
 class _TodayScreenState extends State<TodayScreen> {
-  // Sample data now uses the imported Medication model
-  final List<Medication> _medications = [
-    Medication(
-        name: 'Peracetamol',
-        dosage: '1 Tablet',
-        time: '8:00 AM',
-        icon: Icons.medication),
-    Medication(
-        name: 'Cough Syrup',
-        dosage: '2 Teaspoon',
-        time: '2:00 AM',
-        icon: Icons.medication_liquid,
-        isTaken: true),
-    Medication(
-        name: 'Antibiotic',
-        dosage: '1 Tablet',
-        time: '9:00 AM',
-        icon: Icons.medication),
-  ];
+  // Use a Stream to listen for real-time updates
+  Stream<List<Medicine>>? _medicinesStream;
+  final User? _user = FirebaseAuth.instance.currentUser;
 
   int _selectedDateIndex = 3;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_user != null) {
+      _medicinesStream = _fetchMedicinesStream();
+    }
+  }
+
+  // Function to get the stream of medicines for the current user
+  Stream<List<Medicine>> _fetchMedicinesStream() {
+    // Only fetch for the current day's start date
+    final todayFormatted = DateFormat('dd/MM/yyyy').format(DateTime.now());
+
+    // NOTE: This basic filter fetches medicines whose startDate is today or earlier
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(_user!.uid)
+        .collection('medicines')
+        .where('startDate', isLessThanOrEqualTo: todayFormatted)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return Medicine.fromMap(doc.data(), doc.id);
+      }).toList();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,11 +71,12 @@ class _TodayScreenState extends State<TodayScreen> {
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
-              _buildMedicationList(),
+              _buildMedicationList(), // Uses StreamBuilder
               const SizedBox(height: 20),
+              // This part will need dynamic calculation based on fetched data
               const Center(
                 child: Text(
-                  '2 of 3 medications taken today',
+                  'Loading medication count...',
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
@@ -80,6 +94,51 @@ class _TodayScreenState extends State<TodayScreen> {
         backgroundColor: primaryColor,
         child: const Icon(Icons.add, color: Colors.white),
       ),
+    );
+  }
+
+  // --- Medication List Widget (Updated to use StreamBuilder) ---
+  Widget _buildMedicationList() {
+    if (_user == null) {
+      return const Center(
+          child: Text("Please log in to see your medications."));
+    }
+
+    if (_medicinesStream == null) {
+      return const Center(child: Text("Loading..."));
+    }
+
+    return StreamBuilder<List<Medicine>>(
+      stream: _medicinesStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+              child: Padding(
+            padding: EdgeInsets.all(30.0),
+            child: CircularProgressIndicator(),
+          ));
+        }
+
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+
+        final medicines = snapshot.data ?? [];
+
+        if (medicines.isEmpty) {
+          return const Center(child: Text('No medicines found for this user.'));
+        }
+
+        return ListView.separated(
+          physics: const NeverScrollableScrollPhysics(),
+          shrinkWrap: true,
+          itemCount: medicines.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 16),
+          itemBuilder: (context, index) {
+            return MedicationCard(medicine: medicines[index]);
+          },
+        );
+      },
     );
   }
 
@@ -109,7 +168,7 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  // --- Date Selector Widget ---
+  // --- Date Selector Widget (unchanged) ---
   Widget _buildDateSelector() {
     final List<Map<String, String>> dates = [
       {'day': 'THU', 'date': '07'},
@@ -158,26 +217,13 @@ class _TodayScreenState extends State<TodayScreen> {
       ),
     );
   }
-
-  // --- Medication List Widget ---
-  Widget _buildMedicationList() {
-    return ListView.separated(
-      physics: const NeverScrollableScrollPhysics(),
-      shrinkWrap: true,
-      itemCount: _medications.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 16),
-      itemBuilder: (context, index) {
-        return MedicationCard(medication: _medications[index]);
-      },
-    );
-  }
 }
 
-// --- Medication Card Widget (Remains in the screen file as it's a UI component) ---
+// --- Medication Card Widget (Updated to use Medicine model) ---
 class MedicationCard extends StatefulWidget {
-  final Medication medication;
+  final Medicine medicine; // Renamed property
 
-  const MedicationCard({super.key, required this.medication});
+  const MedicationCard({super.key, required this.medicine});
 
   @override
   State<MedicationCard> createState() => _MedicationCardState();
@@ -189,7 +235,7 @@ class _MedicationCardState extends State<MedicationCard> {
   @override
   void initState() {
     super.initState();
-    isTaken = widget.medication.isTaken;
+    isTaken = widget.medicine.isTaken; // Use model property
   }
 
   @override
@@ -205,25 +251,27 @@ class _MedicationCardState extends State<MedicationCard> {
         children: [
           Row(
             children: [
-              Icon(widget.medication.icon,
-                  color: const Color(0xFFEF6A6A), size: 30),
+              Icon(widget.medicine.icon, // Use model icon
+                  color: const Color(0xFFEF6A6A),
+                  size: 30),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.medication.name,
+                  Text(widget.medicine.name, // Use model name
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(
-                    'Dosage: ${widget.medication.dosage} | ${widget.medication.time}',
+                    // Use model dosage and alarmTimes
+                    'Dosage: ${widget.medicine.dosage} | ${widget.medicine.alarmTimes}',
                     style: TextStyle(color: Colors.grey[600]),
                   ),
                 ],
               ),
             ],
           ),
-          if (widget.medication.name != 'Antibiotic')
+          if (widget.medicine.name != 'Antibiotic') // Use model name
             Padding(
               padding: const EdgeInsets.only(top: 16.0),
               child: Row(
@@ -247,7 +295,13 @@ class _MedicationCardState extends State<MedicationCard> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => ReminderScreen()),
+                                builder: (context) => ReminderScreen(
+                                  // FIX: Pass the required Medicine object
+                                  medicine: widget.medicine,
+                                  // FIX: Pass the required alarmTime string
+                                  alarmTime: widget.medicine.alarmTimes,
+                                ),
+                              ),
                             );
                           },
                   ),
@@ -283,3 +337,5 @@ class _MedicationCardState extends State<MedicationCard> {
     );
   }
 }
+// NOTE: I've removed the redundant `FirebaseAuthService` section as it was already 
+// provided and not directly required for the screen updates.
