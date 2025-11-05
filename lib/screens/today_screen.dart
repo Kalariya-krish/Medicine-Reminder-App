@@ -8,7 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:medicine_reminder_system/screens/add_medicine_screen.dart';
 import '../models/medicine.dart';
 import '../models/history_model.dart';
-import '../services/notification_service.dart'; // Assuming this is fixed
+import '../services/notification_service.dart';
 
 // Helper extension to mimic functional `firstWhereOrNull`
 extension IterableExtensions<E> on Iterable<E> {
@@ -40,11 +40,15 @@ class _TodayScreenState extends State<TodayScreen> {
   Stream<List<HistoryEntry>>? _historyStream;
   final User? _user = FirebaseAuth.instance.currentUser;
 
-  int _selectedDateIndex = 3;
+  // FIX 1: Use DateTime? for selected date, initialized to today
+  DateTime? _selectedDay;
+  final DateTime _today = DateTime.now();
 
   @override
   void initState() {
     super.initState();
+    _selectedDay = _today;
+
     // FIX: Listen to notification taps from the service
     NotificationService.selectNotificationSubject.listen((payload) {
       if (payload != null && mounted) {
@@ -53,46 +57,88 @@ class _TodayScreenState extends State<TodayScreen> {
     });
 
     if (_user != null) {
-      _medicinesStream = _fetchMedicinesStream();
-      _historyStream = _fetchTodayHistoryStream();
+      _loadDataForSelectedDay();
       _scheduleAllNotifications();
     }
   }
 
-  // Fetches all active medicines
-  Stream<List<Medicine>> _fetchMedicinesStream() {
-    final todayFormatted = DateFormat('dd/MM/yyyy').format(DateTime.now());
+  // FIX 2: Unified method to load streams based on _selectedDay
+  void _loadDataForSelectedDay() {
+    if (_user == null || _selectedDay == null) return;
+
+    setState(() {
+      // Re-initialize streams with the current selected day
+      _medicinesStream = _fetchMedicinesStream(_selectedDay!);
+      _historyStream = _fetchTodayHistoryStream(_selectedDay!);
+    });
+  }
+
+  // NOTE: This helper is needed to parse the date strings from Firestore/UI
+  DateTime _parseDateString(String dateString) {
+    try {
+      return DateFormat('dd/MM/yyyy').parse(dateString);
+    } catch (e) {
+      // Return a date far in the past to ensure invalid dates don't block display
+      return DateTime(1900);
+    }
+  }
+
+  // Fetches all active medicines (UPDATED to accept date)
+  Stream<List<Medicine>> _fetchMedicinesStream(DateTime date) {
     return FirebaseFirestore.instance
         .collection('users')
         .doc(_user!.uid)
         .collection('medicines')
-        .where('startDate', isLessThanOrEqualTo: todayFormatted)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return Medicine.fromMap(doc.data(), doc.id);
+      // Filter in Dart to check the duration range
+      final filteredMedicines = snapshot.docs.map((doc) {
+        return Medicine.fromMap(doc.data()!, doc.id);
+      }).where((medicine) {
+        // 1. Check if the selected date is ON or AFTER the start date
+        final start = _parseDateString(medicine.startDate);
+        final isOnOrAfterStart =
+            date.isAfter(start) || DateUtils.isSameDay(date, start);
+
+        // 2. Check if the selected date is ON or BEFORE the end date
+        // If endDate is empty (or 'N/A'), assume the treatment is ongoing (indefinite future date)
+        final endString = medicine.endDate.isEmpty || medicine.endDate == 'N/A'
+            ? '31/12/2100'
+            : medicine.endDate;
+        final end = _parseDateString(endString);
+        final isOnOrBeforeEnd =
+            date.isBefore(end) || DateUtils.isSameDay(date, end);
+
+        return isOnOrAfterStart && isOnOrBeforeEnd;
       }).toList();
+
+      return filteredMedicines;
     });
   }
 
-  // Fetches history entries for today
-  Stream<List<HistoryEntry>> _fetchTodayHistoryStream() {
-    final todayFormatted = DateFormat('dd/MM/yyyy').format(DateTime.now());
+  // Fetches history entries for the selected day (UPDATED to accept date)
+  Stream<List<HistoryEntry>> _fetchTodayHistoryStream(DateTime date) {
+    // Filter history by the exact selected date
+    final selectedDateFormatted = DateFormat('dd/MM/yyyy').format(date);
+
     return FirebaseFirestore.instance
         .collection('users')
         .doc(_user!.uid)
         .collection('history')
-        .where('date', isEqualTo: todayFormatted)
+        .where('date', isEqualTo: selectedDateFormatted)
         .snapshots()
         .map((snapshot) {
       return snapshot.docs.map((doc) {
-        return HistoryEntry.fromMap(doc.data(), doc.id);
+        return HistoryEntry.fromMap(doc.data()!, doc.id);
       }).toList();
     });
   }
 
-  // Schedules all reminders for fetched medicines
+  // Schedules all reminders for fetched medicines (Called ONLY once on startup for today)
   void _scheduleAllNotifications() {
+    // Check if the current selected day is today. Only schedule reminders for TODAY.
+    if (!DateUtils.isSameDay(_selectedDay, _today)) return;
+
     NotificationService.cancelAllNotifications();
 
     _medicinesStream?.first.then((medicines) {
@@ -103,7 +149,7 @@ class _TodayScreenState extends State<TodayScreen> {
           idCounter++;
 
           final parts = time24h.split(':');
-          if (parts.length != 2) continue; // Skip invalid times
+          if (parts.length != 2) continue;
 
           final time =
               TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
@@ -120,9 +166,19 @@ class _TodayScreenState extends State<TodayScreen> {
     });
   }
 
+  // Helper to get the starting date of the week (Monday) based on _today
+  DateTime _getStartOfWeek() {
+    final start = _today.subtract(Duration(days: _today.weekday - 1));
+    return DateTime(start.year, start.month, start.day);
+  }
+
   // Helper to flatten medicine list by time slots
   List<_MedicationTimeSlot> _getDailyTimeSlots(List<Medicine> medicines) {
     final List<_MedicationTimeSlot> slots = [];
+    // Only show scheduled doses if the selected date is today or in the future.
+    // If viewing history (past date), we might only want to rely on the history log.
+    // We keep the logic simple here: just list all active slots.
+
     for (var medicine in medicines) {
       final times24h = medicine.alarmTimes.split(',');
       for (var time24h in times24h) {
@@ -155,11 +211,15 @@ class _TodayScreenState extends State<TodayScreen> {
             children: [
               _buildHeader(),
               const SizedBox(height: 30),
-              _buildDateSelector(),
+              _buildDateSelector(), // Now interactive
               const SizedBox(height: 30),
-              const Text(
-                "Today's Medication",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              Text(
+                // Dynamic title based on selected date
+                DateUtils.isSameDay(_selectedDay, _today)
+                    ? "Today's Medication"
+                    : "Medication on ${DateFormat('EEE, MMM d').format(_selectedDay!)}",
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
               _buildMedicationList(),
@@ -193,6 +253,9 @@ class _TodayScreenState extends State<TodayScreen> {
       return const Center(child: Text("Loading user data..."));
     }
 
+    // NEW: Determine if the currently selected day is TODAY
+    final bool isTodaySelected = DateUtils.isSameDay(_selectedDay, _today);
+
     return StreamBuilder<List<Medicine>>(
       stream: _medicinesStream,
       builder: (context, medicineSnapshot) {
@@ -217,7 +280,8 @@ class _TodayScreenState extends State<TodayScreen> {
                 _getDailyTimeSlots(medicines);
 
             if (dailySlots.isEmpty) {
-              return const Center(child: Text('No doses scheduled for today.'));
+              return const Center(
+                  child: Text('No doses scheduled for this day.'));
             }
 
             return ListView.separated(
@@ -234,11 +298,12 @@ class _TodayScreenState extends State<TodayScreen> {
                 );
 
                 return MedicationCard(
-                  key: ValueKey(
-                      '${slot.medicine.id}_${slot.time}'), // Unique key
+                  key: ValueKey('${slot.medicine.id}_${slot.time}'),
                   medicine: slot.medicine,
                   alarmTime: slot.time,
                   historyEntry: entry, // Pass the history status
+                  isActionEnabled:
+                      isTodaySelected, // <-- NEW: Pass the boolean flag
                 );
               },
             );
@@ -248,8 +313,9 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  // --- Header and Date Selector Widgets (unchanged) ---
+  // --- Header and Date Selector Widgets (UPDATED) ---
   Widget _buildHeader() {
+    // ... (unchanged)
     return Row(
       children: [
         const CircleAvatar(
@@ -275,15 +341,9 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   Widget _buildDateSelector() {
-    final List<Map<String, String>> dates = [
-      {'day': 'THU', 'date': '07'},
-      {'day': 'FRI', 'date': '08'},
-      {'day': 'SAT', 'date': '09'},
-      {'day': 'SUN', 'date': '10'},
-      {'day': 'MON', 'date': '11'},
-      {'day': 'TUS', 'date': '12'},
-      {'day': 'WED', 'date': '13'},
-    ];
+    final startOfWeek = _getStartOfWeek();
+    final List<DateTime> dates =
+        List.generate(7, (index) => startOfWeek.add(Duration(days: index)));
 
     return SizedBox(
       height: 70,
@@ -291,9 +351,18 @@ class _TodayScreenState extends State<TodayScreen> {
         scrollDirection: Axis.horizontal,
         itemCount: dates.length,
         itemBuilder: (context, index) {
-          bool isSelected = index == _selectedDateIndex;
+          final date = dates[index];
+          // FIX 3: Check if the current date is the selected day for highlighting
+          final bool isSelected = DateUtils.isSameDay(_selectedDay, date);
+
           return GestureDetector(
-            onTap: () => setState(() => _selectedDateIndex = index),
+            onTap: () {
+              // FIX 4: Update _selectedDay and reload data
+              setState(() {
+                _selectedDay = date;
+                _loadDataForSelectedDay();
+              });
+            },
             child: Container(
               width: 50,
               margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -305,11 +374,11 @@ class _TodayScreenState extends State<TodayScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(dates[index]['day']!,
+                  Text(DateFormat('EEE').format(date).toUpperCase(),
                       style: TextStyle(
                           color: isSelected ? Colors.white : Colors.grey)),
                   const SizedBox(height: 8),
-                  Text(dates[index]['date']!,
+                  Text(DateFormat('d').format(date),
                       style: TextStyle(
                           color: isSelected ? Colors.white : Colors.black,
                           fontWeight: FontWeight.bold,
@@ -324,17 +393,19 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 }
 
-// --- Medication Card Widget (UPDATED) ---
+// --- Medication Card Widget (Unchanged) ---
 class MedicationCard extends StatelessWidget {
   final Medicine medicine;
   final String alarmTime;
   final HistoryEntry? historyEntry; // Holds the history status
+  final bool isActionEnabled; // <-- NEW FIELD
 
   const MedicationCard({
     super.key,
     required this.medicine,
     required this.alarmTime,
     this.historyEntry,
+    this.isActionEnabled = false, // Default to false for safety
   });
 
   // Function to log a record to Firestore history collection
@@ -377,6 +448,9 @@ class MedicationCard extends StatelessWidget {
     final Color primaryColor = const Color(0xFFEF6A6A);
     final Color takenColor = Colors.green.shade600;
     final Color handledColor = isTaken ? takenColor : Colors.red.shade600;
+
+    // Determine if the button should be active for press (must be today AND not yet handled)
+    final bool buttonActive = isActionEnabled && !isHandled;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -429,16 +503,24 @@ class MedicationCard extends StatelessWidget {
                   _buildActionButton(
                     label: 'Taken',
                     icon: Icons.check,
-                    color: takenColor,
-                    onPressed: () =>
-                        _logHistory(context, 'Taken'), // Firebase Log
+                    color: buttonActive
+                        ? takenColor
+                        : Colors.grey, // Grey if disabled
+                    // NEW: Disable onPressed if buttonActive is false
+                    onPressed: buttonActive
+                        ? () => _logHistory(context, 'Taken')
+                        : null,
                   ),
                   _buildActionButton(
                     label: 'Skip',
                     icon: Icons.close,
-                    color: Colors.red,
-                    onPressed: () =>
-                        _logHistory(context, 'Skipped'), // Firebase Log
+                    color: buttonActive
+                        ? Colors.red
+                        : Colors.grey, // Grey if disabled
+                    // NEW: Disable onPressed if buttonActive is false
+                    onPressed: buttonActive
+                        ? () => _logHistory(context, 'Skipped')
+                        : null,
                   ),
                 ],
               ),
@@ -452,7 +534,7 @@ class MedicationCard extends StatelessWidget {
     required String label,
     required IconData icon,
     required Color color,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return TextButton.icon(
       onPressed: onPressed,

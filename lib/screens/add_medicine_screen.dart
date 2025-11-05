@@ -19,6 +19,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
   final _medicineNameController = TextEditingController();
   final _notesController = TextEditingController();
   final _startDateController = TextEditingController();
+  final _endDateController = TextEditingController(); // NEW CONTROLLER
 
   String? _dosageValue = '1 tablet';
   String? _frequencyValue = 'Once a day';
@@ -34,6 +35,8 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
     super.initState();
     // Set default start date to today
     _startDateController.text = DateFormat('dd/MM/yyyy').format(DateTime.now());
+    _endDateController.text =
+        DateFormat('dd/MM/yyyy').format(DateTime.now().add(Duration(days: 7)));
     _updateTimeControllers();
   }
 
@@ -42,6 +45,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
     _medicineNameController.dispose();
     _notesController.dispose();
     _startDateController.dispose();
+    _endDateController.dispose();
     for (var controller in _timeControllers) {
       controller.dispose();
     }
@@ -96,6 +100,36 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
     }
   }
 
+  // NEW: Date Picker for End Date
+  Future<void> _selectEndDate() async {
+    // Parse the start date to set it as the minimum selectable date
+    DateTime initialDate = DateTime.now().add(const Duration(days: 7));
+    DateTime firstDate = DateTime.now();
+
+    try {
+      // Ensure start date exists and is parsable before setting firstDate
+      final startDate =
+          DateFormat('dd/MM/yyyy').parse(_startDateController.text);
+      firstDate = startDate;
+      initialDate = startDate.add(const Duration(days: 7));
+    } catch (e) {
+      // If start date is invalid, use today as minimum
+      firstDate = DateTime.now();
+    }
+
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: firstDate, // End date cannot be before start date
+      lastDate: DateTime(2101),
+    );
+    if (picked != null) {
+      setState(() {
+        _endDateController.text = DateFormat('dd/MM/yyyy').format(picked);
+      });
+    }
+  }
+
   Future<void> _selectTime(TextEditingController controller) async {
     TimeOfDay initialTime;
     try {
@@ -127,6 +161,19 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       return;
     }
 
+    // Add validation to ensure end date is set if start date is set
+    if (_startDateController.text.isNotEmpty &&
+        _endDateController.text.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Please select an End Date for the treatment duration.')),
+        );
+      }
+      return;
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       if (context.mounted) {
@@ -152,6 +199,7 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
       timeSlot: primaryTimeSlot,
       alarmTimes: alarmTimesString,
       startDate: _startDateController.text,
+      endDate: _endDateController.text, // SAVE NEW FIELD
       notes: _notesController.text.trim(),
     );
 
@@ -255,6 +303,8 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
               _buildTimeSlotSelector(),
 
               const SizedBox(height: 20),
+
+              // Start Date Input
               _buildLabel('Start Date'),
               TextFormField(
                 controller: _startDateController,
@@ -265,6 +315,18 @@ class _AddMedicineScreenState extends State<AddMedicineScreen> {
                 validator: (value) =>
                     value!.isEmpty ? 'Please select a date' : null,
               ),
+
+              // NEW: End Date Input
+              const SizedBox(height: 20),
+              _buildLabel('End Date (Optional)'),
+              TextFormField(
+                controller: _endDateController,
+                decoration: _buildInputDecoration('Select end date').copyWith(
+                    suffixIcon: const Icon(Icons.calendar_today_outlined)),
+                readOnly: true,
+                onTap: _selectEndDate,
+              ),
+
               const SizedBox(height: 20),
               _buildLabel('Notes'),
               TextFormField(
