@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:medicine_reminder_system/screens/add_medicine_screen.dart';
-import 'package:medicine_reminder_system/screens/reminder_screen.dart';
 import '../models/medicine.dart';
 import '../models/history_model.dart';
 import '../services/notification_service.dart'; // Assuming this is fixed
