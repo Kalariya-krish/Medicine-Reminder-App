@@ -51,6 +51,8 @@ dependencies:
   timezone: ^0.10.1
   flutter_native_timezone: ^2.0.0
   rxdart: ^0.28.0
+  image_picker: ^1.2.0
+  firebase_storage: ^12.4.10
 
 dev_dependencies:
   flutter_test:
@@ -80,7 +82,7 @@ flutter:
     - assets/images/onboarding1.png
     - assets/images/onboarding2.png
     - assets/images/onboarding3.png
-    - assets/images/default.jpg
+    - assets/images/default_profile.png
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

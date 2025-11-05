@@ -1,13 +1,33 @@
 // In a file named: lib/screens/today_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // NEW for date formatting
-import 'package:firebase_auth/firebase_auth.dart'; // NEW
-import 'package:cloud_firestore/cloud_firestore.dart'; // NEW
+import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:medicine_reminder_system/screens/add_medicine_screen.dart';
-import '../models/medicine.dart'; // Import the updated model
 import 'package:medicine_reminder_system/screens/reminder_screen.dart';
+import '../models/medicine.dart';
+import '../models/history_model.dart';
+import '../services/notification_service.dart'; // Assuming this is fixed
+
+// Helper extension to mimic functional `firstWhereOrNull`
+extension IterableExtensions<E> on Iterable<E> {
+  E? firstWhereOrNull(bool Function(E) test) {
+    for (var element in this) {
+      if (test(element)) return element;
+    }
+    return null;
+  }
+}
+
+// Helper class to represent a single dose time slot for a medicine
+class _MedicationTimeSlot {
+  final Medicine medicine;
+  final String time;
+
+  _MedicationTimeSlot({required this.medicine, required this.time});
+}
 
 class TodayScreen extends StatefulWidget {
   const TodayScreen({super.key});
@@ -17,8 +37,8 @@ class TodayScreen extends StatefulWidget {
 }
 
 class _TodayScreenState extends State<TodayScreen> {
-  // Use a Stream to listen for real-time updates
   Stream<List<Medicine>>? _medicinesStream;
+  Stream<List<HistoryEntry>>? _historyStream;
   final User? _user = FirebaseAuth.instance.currentUser;
 
   int _selectedDateIndex = 3;
@@ -26,17 +46,23 @@ class _TodayScreenState extends State<TodayScreen> {
   @override
   void initState() {
     super.initState();
+    // FIX: Listen to notification taps from the service
+    NotificationService.selectNotificationSubject.listen((payload) {
+      if (payload != null && mounted) {
+        NotificationService.onSelectNotification(payload);
+      }
+    });
+
     if (_user != null) {
       _medicinesStream = _fetchMedicinesStream();
+      _historyStream = _fetchTodayHistoryStream();
+      _scheduleAllNotifications();
     }
   }
 
-  // Function to get the stream of medicines for the current user
+  // Fetches all active medicines
   Stream<List<Medicine>> _fetchMedicinesStream() {
-    // Only fetch for the current day's start date
     final todayFormatted = DateFormat('dd/MM/yyyy').format(DateTime.now());
-
-    // NOTE: This basic filter fetches medicines whose startDate is today or earlier
     return FirebaseFirestore.instance
         .collection('users')
         .doc(_user!.uid)
@@ -48,6 +74,72 @@ class _TodayScreenState extends State<TodayScreen> {
         return Medicine.fromMap(doc.data(), doc.id);
       }).toList();
     });
+  }
+
+  // Fetches history entries for today
+  Stream<List<HistoryEntry>> _fetchTodayHistoryStream() {
+    final todayFormatted = DateFormat('dd/MM/yyyy').format(DateTime.now());
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(_user!.uid)
+        .collection('history')
+        .where('date', isEqualTo: todayFormatted)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return HistoryEntry.fromMap(doc.data(), doc.id);
+      }).toList();
+    });
+  }
+
+  // Schedules all reminders for fetched medicines
+  void _scheduleAllNotifications() {
+    NotificationService.cancelAllNotifications();
+
+    _medicinesStream?.first.then((medicines) {
+      int idCounter = 0;
+      for (var medicine in medicines) {
+        final times24h = medicine.alarmTimes.split(',');
+        for (var time24h in times24h) {
+          idCounter++;
+
+          final parts = time24h.split(':');
+          if (parts.length != 2) continue; // Skip invalid times
+
+          final time =
+              TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+          final alarmTime = time.format(context);
+
+          NotificationService.scheduleMedicineReminder(
+            id: idCounter,
+            medicine: medicine,
+            time24h: time24h,
+            alarmTime: alarmTime,
+          );
+        }
+      }
+    });
+  }
+
+  // Helper to flatten medicine list by time slots
+  List<_MedicationTimeSlot> _getDailyTimeSlots(List<Medicine> medicines) {
+    final List<_MedicationTimeSlot> slots = [];
+    for (var medicine in medicines) {
+      final times24h = medicine.alarmTimes.split(',');
+      for (var time24h in times24h) {
+        try {
+          final parts = time24h.split(':');
+          final time =
+              TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+          final alarmTime = time.format(context);
+          slots.add(_MedicationTimeSlot(medicine: medicine, time: alarmTime));
+        } catch (e) {
+          // Ignore invalid time formats
+        }
+      }
+    }
+    slots.sort((a, b) => a.time.compareTo(b.time));
+    return slots;
   }
 
   @override
@@ -71,12 +163,11 @@ class _TodayScreenState extends State<TodayScreen> {
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 20),
-              _buildMedicationList(), // Uses StreamBuilder
+              _buildMedicationList(),
               const SizedBox(height: 20),
-              // This part will need dynamic calculation based on fetched data
               const Center(
                 child: Text(
-                  'Loading medication count...',
+                  'Medication status updated in real-time from history.',
                   style: TextStyle(color: Colors.grey),
                 ),
               ),
@@ -97,52 +188,68 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  // --- Medication List Widget (Updated to use StreamBuilder) ---
+  // --- Medication List Widget (Uses nested StreamBuilder for live data + history) ---
   Widget _buildMedicationList() {
-    if (_user == null) {
-      return const Center(
-          child: Text("Please log in to see your medications."));
-    }
-
-    if (_medicinesStream == null) {
-      return const Center(child: Text("Loading..."));
+    if (_user == null || _medicinesStream == null || _historyStream == null) {
+      return const Center(child: Text("Loading user data..."));
     }
 
     return StreamBuilder<List<Medicine>>(
       stream: _medicinesStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+      builder: (context, medicineSnapshot) {
+        if (medicineSnapshot.connectionState == ConnectionState.waiting) {
           return const Center(
               child: Padding(
-            padding: EdgeInsets.all(30.0),
-            child: CircularProgressIndicator(),
-          ));
+                  padding: EdgeInsets.all(30.0),
+                  child: CircularProgressIndicator()));
         }
 
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final medicines = snapshot.data ?? [];
-
+        final List<Medicine> medicines = medicineSnapshot.data ?? [];
         if (medicines.isEmpty) {
-          return const Center(child: Text('No medicines found for this user.'));
+          return const Center(child: Text('No active medicines found.'));
         }
 
-        return ListView.separated(
-          physics: const NeverScrollableScrollPhysics(),
-          shrinkWrap: true,
-          itemCount: medicines.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 16),
-          itemBuilder: (context, index) {
-            return MedicationCard(medicine: medicines[index]);
+        // Nested StreamBuilder for History
+        return StreamBuilder<List<HistoryEntry>>(
+          stream: _historyStream,
+          builder: (context, historySnapshot) {
+            final List<HistoryEntry> history = historySnapshot.data ?? [];
+            final List<_MedicationTimeSlot> dailySlots =
+                _getDailyTimeSlots(medicines);
+
+            if (dailySlots.isEmpty) {
+              return const Center(child: Text('No doses scheduled for today.'));
+            }
+
+            return ListView.separated(
+              physics: const NeverScrollableScrollPhysics(),
+              shrinkWrap: true,
+              itemCount: dailySlots.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 16),
+              itemBuilder: (context, index) {
+                final slot = dailySlots[index];
+
+                // Find matching history entry (by name and time)
+                final HistoryEntry? entry = history.firstWhereOrNull(
+                  (h) => h.time == slot.time && h.name == slot.medicine.name,
+                );
+
+                return MedicationCard(
+                  key: ValueKey(
+                      '${slot.medicine.id}_${slot.time}'), // Unique key
+                  medicine: slot.medicine,
+                  alarmTime: slot.time,
+                  historyEntry: entry, // Pass the history status
+                );
+              },
+            );
           },
         );
       },
     );
   }
 
-  // --- Header Widget ---
+  // --- Header and Date Selector Widgets (unchanged) ---
   Widget _buildHeader() {
     return Row(
       children: [
@@ -168,7 +275,6 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  // --- Date Selector Widget (unchanged) ---
   Widget _buildDateSelector() {
     final List<Map<String, String>> dates = [
       {'day': 'THU', 'date': '07'},
@@ -219,31 +325,64 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 }
 
-// --- Medication Card Widget (Updated to use Medicine model) ---
-class MedicationCard extends StatefulWidget {
-  final Medicine medicine; // Renamed property
+// --- Medication Card Widget (UPDATED) ---
+class MedicationCard extends StatelessWidget {
+  final Medicine medicine;
+  final String alarmTime;
+  final HistoryEntry? historyEntry; // Holds the history status
 
-  const MedicationCard({super.key, required this.medicine});
+  const MedicationCard({
+    super.key,
+    required this.medicine,
+    required this.alarmTime,
+    this.historyEntry,
+  });
 
-  @override
-  State<MedicationCard> createState() => _MedicationCardState();
-}
+  // Function to log a record to Firestore history collection
+  Future<void> _logHistory(BuildContext context, String status) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-class _MedicationCardState extends State<MedicationCard> {
-  late bool isTaken;
+    final formattedDate = DateFormat('dd/MM/yyyy').format(DateTime.now());
 
-  @override
-  void initState() {
-    super.initState();
-    isTaken = widget.medicine.isTaken; // Use model property
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('history')
+          .add({
+        'medicineId': medicine.id,
+        'name': medicine.name,
+        'dosage': medicine.dosage,
+        'time': alarmTime,
+        'date': formattedDate,
+        'status': status,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Medicine marked as $status!')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error logging history: $e');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool isTaken = historyEntry?.status == 'Taken';
+    final bool isSkipped = historyEntry?.status == 'Skipped';
+    final bool isHandled = isTaken || isSkipped;
+    final Color primaryColor = const Color(0xFFEF6A6A);
+    final Color takenColor = Colors.green.shade600;
+    final Color handledColor = isTaken ? takenColor : Colors.red.shade600;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: const Color(0xFFF9F9F9),
+          color: isHandled ? Colors.grey.shade100 : const Color(0xFFF9F9F9),
           borderRadius: BorderRadius.circular(15),
           border: Border.all(color: Colors.grey[200]!)),
       child: Column(
@@ -251,27 +390,38 @@ class _MedicationCardState extends State<MedicationCard> {
         children: [
           Row(
             children: [
-              Icon(widget.medicine.icon, // Use model icon
-                  color: const Color(0xFFEF6A6A),
+              Icon(medicine.icon,
+                  color:
+                      isHandled ? handledColor.withOpacity(0.5) : primaryColor,
                   size: 30),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(widget.medicine.name, // Use model name
+                  Text(medicine.name,
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(
-                    // Use model dosage and alarmTimes
-                    'Dosage: ${widget.medicine.dosage} | ${widget.medicine.alarmTimes}',
-                    style: TextStyle(color: Colors.grey[600]),
+                    'Dosage: ${medicine.dosage} | $alarmTime',
+                    style: TextStyle(
+                      color: isHandled
+                          ? handledColor.withOpacity(0.8)
+                          : Colors.grey[600],
+                      decoration: isTaken ? TextDecoration.lineThrough : null,
+                    ),
                   ),
                 ],
               ),
+              const Spacer(),
+              // Display status text if handled
+              if (isHandled)
+                Text(historyEntry!.status.toUpperCase(),
+                    style: TextStyle(
+                        color: handledColor, fontWeight: FontWeight.bold)),
             ],
           ),
-          if (widget.medicine.name != 'Antibiotic') // Use model name
+          if (!isHandled) // Only show buttons if not handled
             Padding(
               padding: const EdgeInsets.only(top: 16.0),
               child: Row(
@@ -280,36 +430,16 @@ class _MedicationCardState extends State<MedicationCard> {
                   _buildActionButton(
                     label: 'Taken',
                     icon: Icons.check,
-                    color:
-                        isTaken ? Colors.green.withOpacity(0.5) : Colors.green,
-                    onPressed:
-                        isTaken ? null : () => setState(() => isTaken = true),
-                  ),
-                  _buildActionButton(
-                    label: 'Snooze',
-                    icon: Icons.snooze,
-                    color: isTaken ? Colors.blue.withOpacity(0.5) : Colors.blue,
-                    onPressed: isTaken
-                        ? null
-                        : () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ReminderScreen(
-                                  // FIX: Pass the required Medicine object
-                                  medicine: widget.medicine,
-                                  // FIX: Pass the required alarmTime string
-                                  alarmTime: widget.medicine.alarmTimes,
-                                ),
-                              ),
-                            );
-                          },
+                    color: takenColor,
+                    onPressed: () =>
+                        _logHistory(context, 'Taken'), // Firebase Log
                   ),
                   _buildActionButton(
                     label: 'Skip',
                     icon: Icons.close,
-                    color: isTaken ? Colors.red.withOpacity(0.5) : Colors.red,
-                    onPressed: isTaken ? null : () {},
+                    color: Colors.red,
+                    onPressed: () =>
+                        _logHistory(context, 'Skipped'), // Firebase Log
                   ),
                 ],
               ),
@@ -323,7 +453,7 @@ class _MedicationCardState extends State<MedicationCard> {
     required String label,
     required IconData icon,
     required Color color,
-    required VoidCallback? onPressed,
+    required VoidCallback onPressed,
   }) {
     return TextButton.icon(
       onPressed: onPressed,
@@ -332,10 +462,8 @@ class _MedicationCardState extends State<MedicationCard> {
       style: TextButton.styleFrom(
         backgroundColor: color,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       ),
     );
   }
 }
-// NOTE: I've removed the redundant `FirebaseAuthService` section as it was already 
-// provided and not directly required for the screen updates.

@@ -1,48 +1,84 @@
 // In a file named: lib/screens/profile_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:medicine_reminder_system/screens/change_password_screen.dart';
 import 'package:medicine_reminder_system/screens/edit_profile_screen.dart';
-import 'package:medicine_reminder_system/screens/login_screen.dart'; // We will create this for logout
+import 'package:medicine_reminder_system/screens/login_screen.dart';
+import '../services/firebase_auth_service.dart';
+import '../models/user_model.dart'; // NEW
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  UserProfile? _userProfile;
+  final Color accentColor = const Color(0xFFEF6A6A);
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserProfile();
+  }
+
+  Future<void> _fetchUserProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final data = await FirebaseAuthService.fetchUserDetails(user.uid);
+      if (mounted && data != null) {
+        setState(() {
+          _userProfile = UserProfile.fromFirestore(data, user.uid);
+        });
+      }
+    }
+  }
+
+  // Calculate Age (Basic implementation)
+  String _calculateAge(String dob) {
+    try {
+      final parts = dob.split('-'); // Assumes format 'dd-MM-yyyy'
+      if (parts.length != 3) return 'N/A';
+      final dobDate = DateTime(
+          int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+      final today = DateTime.now();
+      int age = today.year - dobDate.year;
+      if (today.month < dobDate.month ||
+          (today.month == dobDate.month && today.day < dobDate.day)) {
+        age--;
+      }
+      return age.toString();
+    } catch (e) {
+      return 'N/A';
+    }
+  }
+
   // --- Logout Functionality ---
-  void _logout(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Confirm Logout'),
-          content: const Text('Are you sure you want to log out?'),
-          actions: [
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(context).pop(); // Close the dialog
-              },
-            ),
-            TextButton(
-              child: const Text('Logout'),
-              onPressed: () {
-                // Navigate to LoginScreen and remove all previous routes
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  (Route<dynamic> route) =>
-                      false, // This predicate removes all routes
-                );
-              },
-            ),
-          ],
-        );
-      },
-    );
+  void _logout(BuildContext context) async {
+    // 1. Sign out from Firebase
+    await FirebaseAuth.instance.signOut();
+
+    // 2. Navigate
+    if (context.mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (Route<dynamic> route) => false,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    const Color accentColor = Color(0xFFEF6A6A);
+    if (_userProfile == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final String age = _calculateAge(_userProfile!.dob);
+    final bool isDefaultImage =
+        _userProfile!.imageUrl == 'assets/images/default_profile.png';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -62,16 +98,22 @@ class ProfileScreen extends StatelessWidget {
               Center(
                 child: Column(
                   children: [
-                    const CircleAvatar(
+                    CircleAvatar(
                       radius: 50,
-                      backgroundImage: AssetImage('assets/profile_pic.png'),
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: isDefaultImage
+                          ? const AssetImage(
+                                  'assets/images/default_profile.png')
+                              as ImageProvider
+                          : NetworkImage(_userProfile!
+                              .imageUrl), // Use NetworkImage for Firebase URL
                     ),
                     const SizedBox(height: 12),
-                    const Text('Kris Kalariya',
-                        style: TextStyle(
+                    Text(_userProfile!.username, // Dynamic Username
+                        style: const TextStyle(
                             fontSize: 22, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text('30 Male',
+                    Text('$age Years', // Dynamic Age
                         style:
                             TextStyle(fontSize: 16, color: Colors.grey[600])),
                   ],
@@ -83,14 +125,14 @@ class ProfileScreen extends StatelessWidget {
               const Text('Mobile Number',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 10),
-              const Card(
+              Card(
                 elevation: 0,
-                shape: RoundedRectangleBorder(
+                shape: const RoundedRectangleBorder(
                     borderRadius: BorderRadius.all(Radius.circular(10)),
                     side: BorderSide(color: Color(0xFFF0F0F0))),
                 child: ListTile(
                   leading: Icon(Icons.phone, color: accentColor),
-                  title: Text('+91 97274 28844'),
+                  title: Text(_userProfile!.mobile), // Dynamic Mobile
                 ),
               ),
               const SizedBox(height: 30),
@@ -109,13 +151,14 @@ class ProfileScreen extends StatelessWidget {
                     _buildSettingsTile(
                       icon: Icons.edit,
                       title: 'Edit Profile',
-                      onTap: () {
-                        // ** NAVIGATE TO EDIT PROFILE **
-                        Navigator.push(
+                      onTap: () async {
+                        // Navigate to EditProfileScreen and await refresh
+                        await Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (context) =>
-                                    const EditProfileScreen()));
+                                builder: (context) => EditProfileScreen(
+                                    userProfile: _userProfile!)));
+                        _fetchUserProfile(); // Refresh data after editing
                       },
                       color: accentColor,
                     ),
@@ -123,7 +166,6 @@ class ProfileScreen extends StatelessWidget {
                       icon: Icons.password,
                       title: 'Change Password',
                       onTap: () {
-                        // ** NAVIGATE TO CHANGE PASSWORD **
                         Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -136,8 +178,26 @@ class ProfileScreen extends StatelessWidget {
                       icon: Icons.logout,
                       title: 'Logout',
                       onTap: () {
-                        // ** CALL LOGOUT FUNCTION **
-                        _logout(context);
+                        // Show dialog before calling logout
+                        showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirm Logout'),
+                            content:
+                                const Text('Are you sure you want to log out?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => _logout(context),
+                                child: const Text('Logout',
+                                    style: TextStyle(color: Colors.red)),
+                              ),
+                            ],
+                          ),
+                        );
                       },
                       color: accentColor,
                       hideDivider: true,
@@ -152,7 +212,7 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // Helper widget for settings items
+  // Helper widget for settings items (unchanged)
   Widget _buildSettingsTile({
     required IconData icon,
     required String title,
