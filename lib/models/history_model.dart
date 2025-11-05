@@ -29,6 +29,7 @@ class HistoryEntry {
       time: map['time'] as String? ?? 'N/A',
       date: map['date'] as String? ?? 'N/A',
       status: map['status'] as String? ?? 'Unknown',
+      // Ensure the timestamp is correctly converted from Firestore's Timestamp object
       timestamp: (map['timestamp'] as Timestamp).toDate(),
     );
   }
