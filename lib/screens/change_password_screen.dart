@@ -1,8 +1,8 @@
 // In a file named: lib/screens/change_password_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // NEW
-import 'package:toastification/toastification.dart'; // Assuming you have this package
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:toastification/toastification.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -12,12 +12,11 @@ class ChangePasswordScreen extends StatefulWidget {
 }
 
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
-  final _formKey = GlobalKey<FormState>(); // NEW: For validation
+  final _formKey = GlobalKey<FormState>();
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
-  // NEW: State for loading/obscuring text
   bool _isLoading = false;
   bool _obscureOld = true;
   bool _obscureNew = true;
@@ -31,7 +30,22 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     super.dispose();
   }
 
-  // --- Core Logic: Change Password ---
+  // Helper for displaying toast notifications
+  void _showToast(BuildContext context, String title, ToastificationType type) {
+    toastification.show(
+      context: context,
+      title: Text(title),
+      icon: Icon(type == ToastificationType.success
+          ? Icons.check_circle
+          : Icons.error),
+      alignment: Alignment.topCenter,
+      style: ToastificationStyle.fillColored,
+      type: type,
+      autoCloseDuration: const Duration(milliseconds: 3000),
+    );
+  }
+
+  // --- Core Logic: Change Password (FIXED) ---
   Future<void> _changePassword() async {
     if (!_formKey.currentState!.validate() || _isLoading) return;
 
@@ -44,13 +58,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
 
-    // User must have signed in with email/password to reauthenticate
-    if (user.providerData.any((info) => info.providerId == 'password')) {
-      _showToast(context, 'Only available for Email/Password users.',
-          ToastificationType.warning);
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
@@ -60,7 +67,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         password: oldPassword,
       );
 
-      // 2. Reauthenticate the user
+      // 2. Reauthenticate the user (This verifies the old password)
       await user.reauthenticateWithCredential(credential);
 
       // 3. Update the password
@@ -83,6 +90,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         message = 'Invalid old password.';
       } else if (e.code == 'requires-recent-login') {
         message = 'Please log in again before changing the password.';
+      } else if (e.code == 'operation-not-allowed') {
+        // Handle users who signed in with providers like Google/Facebook
+        message =
+            'Change password is only allowed for Email/Password accounts.';
       } else {
         message = 'Error: ${e.message}';
       }
@@ -95,21 +106,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         setState(() => _isLoading = false);
       }
     }
-  }
-
-  // Helper for displaying toast notifications
-  void _showToast(BuildContext context, String title, ToastificationType type) {
-    toastification.show(
-      context: context,
-      title: Text(title),
-      icon: Icon(type == ToastificationType.success
-          ? Icons.check_circle
-          : Icons.error),
-      alignment: Alignment.topCenter,
-      style: ToastificationStyle.fillColored,
-      type: type,
-      autoCloseDuration: const Duration(milliseconds: 2000),
-    );
   }
 
   @override
@@ -126,11 +122,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       ),
       backgroundColor: Colors.white,
       body: SingleChildScrollView(
-        // Changed Padding to SingleChildScrollView
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Form(
-            // Added Form for validation
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -200,14 +194,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     );
   }
 
-  // Helper widget for password fields (UPDATED)
+  // Helper widget for password fields
   Widget _buildPasswordField({
     required String label,
     required TextEditingController controller,
     required String hint,
     required bool obscureText,
     required VoidCallback onToggle,
-    String? Function(String?)? validator, // Added validator
+    String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -215,7 +209,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         TextFormField(
-          // Changed TextField to TextFormField for validation
           controller: controller,
           obscureText: obscureText,
           decoration: InputDecoration(

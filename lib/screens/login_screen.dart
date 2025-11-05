@@ -71,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       toastification.show(
-          title: const Text('Error'),
+          title: const Text('Error, Invalid Credential !'),
           icon: const Icon(Icons.check),
           alignment: Alignment.topCenter,
           style: ToastificationStyle.fillColored,
