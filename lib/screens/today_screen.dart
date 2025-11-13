@@ -9,6 +9,8 @@ import 'package:medicine_reminder_system/screens/add_medicine_screen.dart';
 import '../models/medicine.dart';
 import '../models/history_model.dart';
 import '../services/notification_service.dart';
+import '../models/user_model.dart';
+import '../services/firebase_auth_service.dart';
 
 // Helper extension to mimic functional `firstWhereOrNull`
 extension IterableExtensions<E> on Iterable<E> {
@@ -38,6 +40,8 @@ class TodayScreen extends StatefulWidget {
 class _TodayScreenState extends State<TodayScreen> {
   Stream<List<Medicine>>? _medicinesStream;
   Stream<List<HistoryEntry>>? _historyStream;
+  Stream<UserProfile?>? _userProfileStream;
+
   final User? _user = FirebaseAuth.instance.currentUser;
 
   // FIX 1: Use DateTime? for selected date, initialized to today
@@ -57,9 +61,26 @@ class _TodayScreenState extends State<TodayScreen> {
     });
 
     if (_user != null) {
+      _userProfileStream = _fetchUserProfileStream();
       _loadDataForSelectedDay();
       _scheduleAllNotifications();
     }
+  }
+
+// NEW: Function to stream user profile from Firestore
+  Stream<UserProfile?> _fetchUserProfileStream() {
+    if (_user == null) return Stream.value(null);
+
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(_user!.uid)
+        .snapshots()
+        .map((docSnapshot) {
+      if (docSnapshot.exists && docSnapshot.data() != null) {
+        return UserProfile.fromFirestore(docSnapshot.data()!, _user!.uid);
+      }
+      return null;
+    });
   }
 
   // FIX 2: Unified method to load streams based on _selectedDay
@@ -313,28 +334,58 @@ class _TodayScreenState extends State<TodayScreen> {
     );
   }
 
-  // --- Header and Date Selector Widgets (UPDATED) ---
+  // --- Header Widget (UPDATED to use StreamBuilder) ---
   Widget _buildHeader() {
-    // ... (unchanged)
+    if (_userProfileStream == null) {
+      // Display placeholder if stream hasn't initialized (shouldn't happen post-login)
+      return _buildHeaderContent(
+          username: 'Loading...',
+          imageUrl: 'assets/images/default_profile.png');
+    }
+
+    return StreamBuilder<UserProfile?>(
+      stream: _userProfileStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildHeaderContent(
+              username: 'Loading...',
+              imageUrl: 'assets/images/default_profile.png');
+        }
+
+        final userProfile = snapshot.data;
+        // Use username/image from profile, defaulting to 'Guest'/'assets/profile_pic.png' if null
+        final username = userProfile?.username ?? 'Guest';
+        final imageUrl =
+            userProfile?.imageUrl ?? 'assets/images/default_profile.png';
+
+        return _buildHeaderContent(username: username, imageUrl: imageUrl);
+      },
+    );
+  }
+
+  // Helper to render the actual Row content
+  Widget _buildHeaderContent(
+      {required String username, required String imageUrl}) {
+    // FIX: Check for the exact default path saved in Firestore
+    final bool isDefaultImage =
+        imageUrl == 'assets/images/default_profile.png' ||
+            imageUrl == 'assets/profile_pic.png';
+
     return Row(
       children: [
-        const CircleAvatar(
+        CircleAvatar(
           radius: 25,
-          backgroundImage: AssetImage('assets/profile_pic.png'),
+          backgroundColor: Colors.grey.shade200,
+          backgroundImage: isDefaultImage
+              // Use AssetImage for local default path
+              ? AssetImage(imageUrl) as ImageProvider
+              // Use NetworkImage for Firebase URL
+              : NetworkImage(imageUrl),
         ),
         const SizedBox(width: 15),
-        const Text(
-          'Hey, Jocab',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
-        const Spacer(),
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.notifications_none, size: 28),
-        ),
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.filter_list, size: 28),
+        Text(
+          'Hey, $username',
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
         ),
       ],
     );

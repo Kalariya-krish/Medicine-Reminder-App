@@ -7,6 +7,7 @@ import 'package:medicine_reminder_system/screens/register_screen.dart';
 import 'package:medicine_reminder_system/screens/home_screen.dart';
 import 'package:medicine_reminder_system/screens/forgot_password_screen.dart';
 import 'package:medicine_reminder_system/screens/otp_verification_screen.dart';
+import 'package:medicine_reminder_system/screens/auth_gate.dart';
 import 'package:toastification/toastification.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'services/notification_service.dart';
@@ -45,8 +46,9 @@ class MediMateApp extends StatelessWidget {
           primarySwatch: Colors.blue,
           scaffoldBackgroundColor: const Color(0xFFFFFFFF),
         ),
-        home: const SplashScreen(),
+        initialRoute: '/auth_gate',
         routes: {
+          '/auth_gate': (context) => const AuthGate(),
           '/register': (context) => const RegisterScreen(),
           '/login': (context) => const LoginScreen(),
           '/home': (context) => const HomeScreen(),
